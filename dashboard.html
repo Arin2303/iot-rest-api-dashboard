@@ -181,6 +181,7 @@
             color: #6af;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
@@ -203,6 +204,13 @@
                 <div class="value" style="font-size:22px;" id="status">
                     <span class="status-badge status-offline" id="status-badge">OFFLINE</span>
                 </div>
+            </div>
+        </div>
+        <!-- Grafik Real-Time -->
+        <div class="panel">
+            <h2>Grafik Suhu dan Kelembapan Real-Time</h2>
+            <div style="height: 300px;">
+                <canvas id="sensorChart"></canvas>
             </div>
         </div>
         <!-- Kontrol -->
@@ -245,6 +253,62 @@
         // KONFIGURASI
         // ==============================
         const API_BASE = 'http://localhost:1880/api';
+        // Koneksi WebSocket untuk data sensor real-time
+        const ws = new WebSocket('ws://localhost:1880/ws/sensor');
+
+        ws.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+
+                document.getElementById('suhu').textContent = data.suhu;
+                document.getElementById('kelembaban').textContent = data.kelembaban;
+
+                updateSensorChart(data);
+            } catch (error) {
+                console.error('Gagal membaca data WebSocket:', error);
+            }
+        };
+
+        ws.onopen = () => log('WebSocket terhubung', 'success');
+        ws.onerror = () => log('Koneksi WebSocket bermasalah', 'error');
+        const sensorChart = new Chart(document.getElementById('sensorChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Suhu (°C)',
+                        data: [],
+                        borderColor: '#667eea',
+                        tension: 0.3
+                    },
+                    {
+                        label: 'Kelembapan (%)',
+                        data: [],
+                        borderColor: '#28a745',
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+
+        function updateSensorChart(data) {
+            const chart = sensorChart;
+            chart.data.labels.push(new Date().toLocaleTimeString());
+            chart.data.datasets[0].data.push(Number(data.suhu));
+            chart.data.datasets[1].data.push(Number(data.kelembaban));
+
+            if (chart.data.labels.length > 20) {
+                chart.data.labels.shift();
+                chart.data.datasets.forEach(dataset => dataset.data.shift());
+            }
+
+            chart.update();
+        }
         // ==============================
         // UTILITY: LOG
         // ==============================
@@ -264,6 +328,7 @@
                 if (json.status === 'success' && json.data.suhu !== null) {
                     document.getElementById('suhu').textContent = json.data.suhu;
                     document.getElementById('kelembaban').textContent = json.data.kelembaban;
+                    
 
                     const badge = document.getElementById('status-badge');
                     badge.textContent = 'ONLINE';
@@ -328,10 +393,9 @@
         // ==============================
         // AUTO REFRESH
         // ==============================
-        log('Dashboard dimulai, polling setiap 3 detik...');
+        log('Dashboard dimulai, WebSocket aktif.');
         fetchSensor();
         fetchHistory();
-        setInterval(fetchSensor, 3000);
         setInterval(fetchHistory, 5000);
     </script>
 </body>
